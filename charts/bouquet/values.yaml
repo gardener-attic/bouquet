@@ -1,0 +1,9 @@
+serviceAccountName: gardener-bouquet
+image:
+  repository: eu.gcr.io/gardener-project/test/bouquet
+  tag: latest
+  pullPolicy: IfNotPresent
+localbouquet:
+  # Enable this if you want bouquet to be able to affect your current cluster.
+  # CAUTION: With this, bouquet becomes 'omnipotent' - use only for debugging/testing etc.
+  enabled: false

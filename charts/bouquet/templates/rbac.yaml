@@ -1,0 +1,62 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: garden.sapcloud.io:bouquet-admin
+rules:
+- apiGroups:
+  - garden.sapcloud.io
+  resources:
+  - '*'
+  verbs:
+  - '*'
+- apiGroups:
+  - ""
+  resources:
+  - "secrets"
+  - "configmaps"
+  verbs:
+  - "get"
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: garden.sapcloud.io:bouquet-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: garden.sapcloud.io:bouquet-admin
+subjects:
+- kind: ServiceAccount
+  name: "{{ required ".Values.serviceAccountName is required" .Values.serviceAccountName }}"
+  namespace: garden
+
+{{- if .Values.localbouquet.enabled }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: garden.sapcloud.io:bouquet-local-admin
+rules:
+- apiGroups:
+  - '*'
+  resources:
+  - '*'
+  verbs:
+  - '*'
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: garden.sapcloud.io:bouquet-local-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: garden.sapcloud.io:bouquet-local-admin
+subjects:
+- kind: ServiceAccount
+  name: "{{ required ".Values.serviceAccountName is required" .Values.serviceAccountName }}"
+  namespace: garden
+{{- end }}
+

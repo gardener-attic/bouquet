@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-apiserver
+  namespace: {{.Release.Namespace}}
+  {{if eq .Values.cloudProvider "aws" -}}
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "3600"
+  {{end -}}
+  labels:
+    app: kubernetes
+    role: apiserver
+spec:
+  type: {{ if eq .Values.cloudProvider "local" }}NodePort{{ else }}LoadBalancer{{ end }}
+  selector:
+    app: kubernetes
+    role: apiserver
+  ports:
+  - name: kube-apiserver
+    protocol: TCP
+    port: 443
+    targetPort: {{ if eq .Values.cloudProvider "local" }}31443{{ else }}443{{ end }}
+{{- if eq .Values.cloudProvider "local" }}
+    nodePort: 31443
+{{- end -}}

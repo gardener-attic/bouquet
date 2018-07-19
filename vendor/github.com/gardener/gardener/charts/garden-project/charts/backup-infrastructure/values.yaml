@@ -1,0 +1,9 @@
+backupInfrastructure:
+  name: example-backup
+
+seed:
+  name: example-seed
+
+shoot:
+  name: example-shoot
+  uid: abcde-xyz

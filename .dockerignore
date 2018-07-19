@@ -1,0 +1,8 @@
+./charts/
+./deploy/
+./hack/
+
+.git/
+.idea/
+
+Dockerfile

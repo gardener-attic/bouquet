@@ -1,0 +1,79 @@
+apiVersion: {{ include "deploymentversion" . }}
+kind: Deployment
+metadata:
+  name: {{ template "fullname" . }}
+  namespace: kube-system
+  labels:
+    app: {{ template "name" . }}
+    heritage: "{{ .Release.Service }}"
+    release: "{{ .Release.Name }}"
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    kubernetes.io/cluster-service: "true"
+    addonmanager.kubernetes.io/mode: Reconcile
+    origin: gardener
+spec:
+  revisionHistoryLimit: 0
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ template "name" . }}
+      heritage: "{{ .Release.Service }}"
+      release: "{{ .Release.Name }}"
+      chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+      kubernetes.io/cluster-service: "true"
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ''
+      labels:
+        origin: gardener
+        app: {{ template "name" . }}
+        heritage: "{{ .Release.Service }}"
+        release: "{{ .Release.Name }}"
+        chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+        kubernetes.io/cluster-service: "true"
+    spec:
+      tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+      serviceAccountName: {{ if .Values.rbac.create }}{{ template "fullname" . }}{{ else }}"{{ .Values.rbac.serviceAccountName }}"{{ end }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 10 }}
+      containers:
+      - name: main
+        image: {{ index .Values.images "kubernetes-dashboard" }}
+        imagePullPolicy: {{ .Values.imagePullPolicy }}
+        args:
+        - --auto-generate-certificates
+        - --authentication-mode=basic
+        resources:
+{{ toYaml .Values.resources | indent 10 }}
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /
+            port: 8443
+            scheme: HTTPS
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 30
+        ports:
+        - containerPort: 8443
+          protocol: TCP
+        volumeMounts:
+        - name: kubernetes-dashboard-certs
+          mountPath: /certs
+        - name: tmp-volume
+          mountPath: /tmp
+      volumes:
+      - name: kubernetes-dashboard-certs
+        secret:
+          secretName: kubernetes-dashboard-certs
+      - name: tmp-volume
+        emptyDir: {}

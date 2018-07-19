@@ -1,0 +1,11 @@
+apiVersion: "garden.sapcloud.io/v1alpha1"
+kind: "AddonInstance"
+metadata:
+  name: "example"
+  finalizers:
+    - "bouquet"
+spec:
+  manifest:
+    namespace: "default"
+    name: "nginx"
+    version: "1.0.0"

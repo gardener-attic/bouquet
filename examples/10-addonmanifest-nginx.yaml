@@ -1,0 +1,7 @@
+apiVersion: "garden.sapcloud.io/v1alpha1"
+kind: "AddonManifest"
+metadata:
+  name: "nginx-1.0.0"
+spec:
+  configMap: "nginx-chart"
+

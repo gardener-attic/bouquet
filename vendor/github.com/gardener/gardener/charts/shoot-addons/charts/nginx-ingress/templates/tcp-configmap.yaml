@@ -1,0 +1,16 @@
+{{- if .Values.tcp }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app: {{ template "name" . }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+    component: "{{ .Values.controller.name }}"
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+    addonmanager.kubernetes.io/mode: Reconcile
+  name: {{ template "fullname" . }}-tcp
+  namespace: kube-system
+data:
+{{ toYaml .Values.tcp | indent 2 }}
+{{- end }}

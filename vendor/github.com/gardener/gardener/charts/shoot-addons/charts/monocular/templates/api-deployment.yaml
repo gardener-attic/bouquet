@@ -1,0 +1,64 @@
+apiVersion: {{ include "deploymentversion" . }}
+kind: Deployment
+metadata:
+  name: {{ template "fullname" . }}-api
+  namespace: kube-system
+  labels:
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    addonmanager.kubernetes.io/mode: Reconcile
+    origin: gardener
+spec:
+  revisionHistoryLimit: 0
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ template "fullname" . }}-api
+  template:
+    metadata:
+      labels:
+        origin: gardener
+        app: {{ template "fullname" . }}-api
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/api-config.yaml") . | sha256sum }}
+    spec:
+      initContainers:
+      - name: init-monocular
+        image: {{ index .Values.images "busybox" }}
+        command:
+        - sh
+        - -c
+        - 'until nslookup kubernetes.default.svc > /dev/null; do echo waiting for kube-dns; sleep 2; done'
+      containers:
+      - name: {{ .Chart.Name }}
+        image: {{ index .Values.images "monocular-api" }}
+        imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+        env:
+        - name: MONOCULAR_HOME
+          value: /monocular
+        ports:
+        - containerPort: {{ .Values.api.service.internalPort }}
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: {{ .Values.api.service.internalPort }}
+          initialDelaySeconds: {{ .Values.api.livenessProbe.initialDelaySeconds }}
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: {{ .Values.api.service.internalPort }}
+          initialDelaySeconds: {{ .Values.api.livenessProbe.initialDelaySeconds }}
+          timeoutSeconds: 5
+        volumeMounts:
+          - name: cache
+            mountPath: /monocular
+          - name: config
+            mountPath: /monocular/config
+        resources:
+{{ toYaml .Values.api.resources | indent 12 }}
+      volumes:
+      - name: config
+        configMap:
+          name: {{ template "fullname" . }}-api-config
+      - name: cache
+        emptyDir: {}

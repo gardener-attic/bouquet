@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gardener-bouquet
+  namespace: garden
+  labels:
+    app: gardener
+    role: bouquet
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gardener
+      role: bouquet
+  template:
+    metadata:
+      labels:
+        app: gardener
+        role: bouquet
+        chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+        release: "{{ .Release.Name }}"
+        heritage: "{{ .Release.Service }}"
+    spec:
+      serviceAccountName: {{ required ".Values.serviceAccountName is required" .Values.serviceAccountName }}
+      containers:
+      - name: gardener-bouquet
+        image: {{ required ".Values.image.repository is required" .Values.image.repository }}:{{ required ".Values.image.tag is required" .Values.image.tag }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+        - /bouquet

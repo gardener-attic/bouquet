@@ -1,0 +1,172 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: etcd-{{ .Values.role }}-client
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: etcd-statefulset
+    role: {{ .Values.role }}
+spec:
+  type: ClusterIP
+  sessionAffinity: None
+  selector:
+    app: etcd-statefulset
+    role: {{ .Values.role }}
+  ports:
+  - name: client
+    protocol: TCP
+    port: 2379
+    targetPort: 2379
+---
+apiVersion: {{ include "statefulsetversion" . }}
+kind: StatefulSet
+metadata:
+  name: etcd-{{ .Values.role }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: etcd-statefulset
+    role: {{ .Values.role }}
+spec:
+  updateStrategy:
+    type: RollingUpdate
+  serviceName: etcd-{{.Values.role}}
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: etcd-statefulset
+      role: {{ .Values.role }}
+  template:
+    metadata:
+      annotations:
+        checksum/configmap-etcd-bootstrap-config: {{ include (print $.Template.BasePath "/configmap-etcd-bootstrap.yaml") . | sha256sum }}
+{{- if .Values.podAnnotations }}
+{{ toYaml .Values.podAnnotations | indent 8 }}
+{{- end }}
+      labels:
+        app: etcd-statefulset
+        role: {{ .Values.role }}
+    spec:
+      containers:
+      - name: etcd
+        image: {{ index .Values.images "etcd" }}
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bootstrap/bootstrap.sh
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 5
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -ec
+            - ETCDCTL_API=3
+            - etcdctl
+            - --cert=/var/etcd/client/ssl/tls.crt
+            - --key=/var/etcd/client/ssl/tls.key
+            - --cacert=/srv/kubernetes/ca/ca.crt
+            - --endpoints=https://etcd-{{ .Values.role }}-0:2379
+            - get
+            - foo
+          initialDelaySeconds: 15
+          periodSeconds: 5
+        ports:
+        - containerPort: 2380
+          name: serverport
+          protocol: TCP
+        - containerPort: 2379
+          name: clientport
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 200m
+            memory: 500Mi
+          limits:
+            cpu: 750m
+            memory: 2560Mi
+        volumeMounts:
+        - name: etcd-{{ .Values.role }}
+          mountPath: /var/etcd/data
+        - name: etcd-bootstrap
+          mountPath: /bootstrap
+        - name: ca
+          mountPath: /srv/kubernetes/ca
+        - name: etcd-server-tls
+          mountPath: /var/etcd/server/ssl
+        - name: etcd-client-tls
+          mountPath: /var/etcd/client/ssl
+      - name: backup-restore
+        command:
+        - etcdbrctl
+        - server
+        - --schedule={{ .Values.backup.schedule }}
+        - --max-backups={{ .Values.backup.maxBackups }}
+        - --data-dir=/var/etcd/data
+        - --storage-provider={{ .Values.backup.storageProvider }}
+        - --store-prefix=etcd-{{ .Values.role }}
+        - --cert=/var/etcd/ssl/tls.crt
+        - --key=/var/etcd/ssl/tls.key
+        - --cacert=/srv/kubernetes/ca/ca.crt
+        - --insecure-transport=false
+        - --insecure-skip-tls-verify=false
+        - --endpoints=https://etcd-{{ .Values.role }}-0:2379
+        image: {{ index .Values.images "etcd-backup-restore" }}
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: server
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 300m
+            memory: 1Gi
+        env:
+        - name: STORAGE_CONTAINER
+          value: {{ .Values.backup.storageContainer }}
+{{- if .Values.backup.env }}
+{{ toYaml .Values.backup.env | indent 8 }}
+{{- end }}
+        volumeMounts:
+        - name: etcd-{{ .Values.role }}
+          mountPath: /var/etcd/data
+        - name: ca
+          mountPath: /srv/kubernetes/ca
+        - name: etcd-client-tls
+          mountPath: /var/etcd/ssl
+{{- if .Values.backup.volumeMounts }}
+{{ toYaml .Values.backup.volumeMounts | indent 8 }}
+{{- end }}
+      volumes:
+        - name: etcd-bootstrap
+          configMap:
+            name: etcd-bootstrap-{{ .Values.role }}
+            defaultMode: 356
+        - name: etcd-server-tls
+          secret:
+            secretName: {{ .Values.tlsServerSecretName }}
+        - name: etcd-client-tls
+          secret:
+            secretName: {{ .Values.tlsClientSecretName }}
+        - name: ca
+          secret:
+            secretName: ca
+{{- if .Values.backup.storageProvider }}
+        - name: {{ .Values.backup.backupSecret }}
+          secret:
+            secretName: {{ .Values.backup.backupSecret }}
+{{- end }}
+  volumeClaimTemplates:
+  - metadata:
+      name: etcd-{{ .Values.role }}
+    spec:
+      accessModes:
+      - "ReadWriteOnce"
+      resources:
+        requests:
+          storage: 10Gi

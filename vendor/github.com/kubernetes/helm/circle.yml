@@ -1,0 +1,45 @@
+machine:
+  environment:
+    GLIDE_VERSION: "0.10.1"
+    GO15VENDOREXPERIMENT: 1
+    GOPATH: /usr/local/go_workspace
+    HOME: /home/ubuntu
+    IMPORT_PATH: "k8s.io/helm"
+    PATH: $HOME/go/bin:/opt/google-cloud-sdk/bin:$PATH
+    GOROOT: $HOME/go
+    GCLOUD_PROJECT: kubernetes-helm
+
+  services:
+    - docker
+
+dependencies:
+  override:
+    - mkdir -p $HOME/go
+    - wget "https://storage.googleapis.com/golang/go1.6.linux-amd64.tar.gz"
+    - tar -C $HOME -xzf go1.6.linux-amd64.tar.gz
+    - go version
+    - go env
+    - sudo chown -R $(whoami):staff /usr/local
+    - cd $GOPATH
+    - mkdir -p $GOPATH/src/$IMPORT_PATH
+    - cd $HOME/helm
+    - rsync -az --delete ./ "$GOPATH/src/$IMPORT_PATH/"
+    - wget "https://github.com/Masterminds/glide/releases/download/$GLIDE_VERSION/glide-$GLIDE_VERSION-linux-amd64.tar.gz"
+    - mkdir -p $HOME/bin
+    - tar -vxz -C $HOME/bin --strip=1 -f glide-$GLIDE_VERSION-linux-amd64.tar.gz
+    - export PATH="$HOME/bin:$PATH" GLIDE_HOME="$HOME/.glide"
+
+test:
+  override:
+    - cd $GOPATH/src/$IMPORT_PATH && make bootstrap test
+
+deployment:
+  master-branch:
+    branch: master
+    commands:
+      - echo $GCLOUD_SERVICE_KEY | base64 --decode > ${HOME}/gcloud-service-key.json
+      - sudo /opt/google-cloud-sdk/bin/gcloud --quiet components update
+      - sudo /opt/google-cloud-sdk/bin/gcloud auth activate-service-account --key-file ${HOME}/gcloud-service-key.json
+      - sudo /opt/google-cloud-sdk/bin/gcloud config set project $GCLOUD_PROJECT
+      - cd $GOPATH/src/$IMPORT_PATH
+      - make docker-build docker-mutable-push

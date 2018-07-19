@@ -1,0 +1,22 @@
+cloudProvider: aws
+replicas: 1
+kubernetesVersion: 1.7.5
+serviceNetwork: 10.0.0.0/24
+configureRoutes: false
+podNetwork: 192.168.0.0/16
+clusterName: shoot-foo-bar
+environment: []
+additionalParameters: []
+podAnnotations: {}
+featureGates: {}
+  # CustomResourceValidation: true
+  # RotateKubeletServerCertificate: false
+images:
+  hyperkube: image-repository
+resources:
+  requests:
+    cpu: 200m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

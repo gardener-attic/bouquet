@@ -1,0 +1,8 @@
+cloudConfigContent: {}
+coreAddonsContent: {}
+admissionControlsContent: {}
+replicas: 1
+optionalAddonsContent: {}
+podAnnotations: {}
+images:
+  kube-addon-manager: image-repository:image-tag
