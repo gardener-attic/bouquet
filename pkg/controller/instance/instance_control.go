@@ -14,62 +14,23 @@ limitations under the License.
 package instance
 
 import (
-	"bytes"
 	"github.com/gardener/bouquet/pkg/apis/garden/v1alpha1"
 	"github.com/hashicorp/go-multierror"
-	helmEngine "github.com/kubernetes/helm/pkg/engine"
-	"io"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/restmapper"
-	"k8s.io/helm/pkg/proto/hapi/chart"
 )
 
 const (
 	kubeConfigKey = "kubeconfig"
 )
 
-var (
-	engine = helmEngine.New()
-)
-
 type ResourceFactory func(resource *metav1.APIResource, namespace string) (dynamic.ResourceInterface, error)
-
-func ResolveChart(chrt *chart.Chart, instance *v1alpha1.AddonInstance) ([]*unstructured.Unstructured, error) {
-	chartValues, err := engine.Render(chrt, instance.Spec.Values)
-	if err != nil {
-		return nil, err
-	}
-
-	var objects []*unstructured.Unstructured
-	for _, data := range chartValues {
-		decoder := yaml.NewYAMLToJSONDecoder(bytes.NewReader([]byte(data)))
-
-		for {
-			var decoded map[string]interface{}
-			if err := decoder.Decode(&decoded); err != nil {
-				if err != io.EOF {
-					return nil, err
-				}
-				break
-			}
-			if decoded == nil {
-				continue
-			}
-
-			object := &unstructured.Unstructured{Object: decoded}
-			objects = append(objects, object)
-		}
-	}
-
-	return objects, nil
-}
 
 // TODO: caching of shoot clients / rest mappers
 func (c *Controller) targetFromShoot(shootNamespace, shootName string) (dynamic.Interface, meta.RESTMapper, error) {
@@ -192,13 +153,13 @@ func (c *Controller) reconcile(instance *v1alpha1.AddonInstance) error {
 		return err
 	}
 
-	chrt, err := c.resolveManifest(manifest)
+	src, err := c.resolveManifest(manifest)
 	if err != nil {
 		c.log.Errorf("Could not resolve manifest %q: %v", manifest.Name, err)
 		return err
 	}
 
-	objects, err := ResolveChart(chrt, instance)
+	objects, err := src.Apply(instance)
 	if err != nil {
 		c.log.Errorf("Could not apply instance to manifest: %v", err)
 		return err

@@ -78,9 +78,10 @@ func (in *AddonManifest) NameAndVersion() (string, semver.Version) {
 }
 
 type AddonManifestSpec struct {
-	ConfigMap    string                 `json:"configMap"`
-	Values       map[string]interface{} `json:"values,omitempty"`
-	Dependencies map[string]string      `json:"dependencies,omitempty"`
+	ConfigMap     string                 `json:"configMap,omitempty"`
+	ConfigMapHelm string                 `json:"configMapHelm,omitempty"`
+	Values        map[string]interface{} `json:"values,omitempty"`
+	Dependencies  map[string]string      `json:"dependencies,omitempty"`
 }
 
 func (in *AddonManifestSpec) DeepCopyInto(out *AddonManifestSpec) {

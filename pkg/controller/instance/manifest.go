@@ -14,17 +14,89 @@ limitations under the License.
 package instance
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/blang/semver"
 	"github.com/gardener/bouquet/pkg/apis/garden/v1alpha1"
 	"github.com/gardener/bouquet/pkg/controller/common"
 	"github.com/golang/protobuf/ptypes/any"
+	helmEngine "github.com/kubernetes/helm/pkg/engine"
+	"io"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/helm/pkg/proto/hapi/chart"
 	"strings"
 )
+
+var (
+	engine = helmEngine.New()
+)
+
+type Source interface {
+	Apply(instance *v1alpha1.AddonInstance) ([]*unstructured.Unstructured, error)
+}
+
+func ParseObjects(data []byte) ([]*unstructured.Unstructured, error) {
+	var objects []*unstructured.Unstructured
+	decoder := yaml.NewYAMLToJSONDecoder(bytes.NewReader(data))
+
+	for {
+		var decoded map[string]interface{}
+		if err := decoder.Decode(&decoded); err != nil {
+			if err != io.EOF {
+				return nil, err
+			}
+			break
+		}
+		if decoded == nil {
+			continue
+		}
+
+		object := &unstructured.Unstructured{Object: decoded}
+		objects = append(objects, object)
+	}
+
+	return objects, nil
+}
+
+func ParseMappedFileContents(mappedContents map[string]string) ([]*unstructured.Unstructured, error) {
+	var objects []*unstructured.Unstructured
+	for _, content := range mappedContents {
+		newObjects, err := ParseObjects([]byte(content))
+		if err != nil {
+			return nil, err
+		}
+
+		objects = append(objects, newObjects...)
+	}
+
+	return objects, nil
+}
+
+type chartSource struct {
+	chrt *chart.Chart
+}
+
+func (c *chartSource) Apply(instance *v1alpha1.AddonInstance) ([]*unstructured.Unstructured, error) {
+	values, err := engine.Render(c.chrt, instance.Spec.Values)
+	if err != nil {
+		return nil, err
+	}
+
+	return ParseMappedFileContents(values)
+}
+
+type mappedFileSource struct {
+	mappedFiles map[string]string
+}
+
+func (m *mappedFileSource) Apply(_ *v1alpha1.AddonInstance) ([]*unstructured.Unstructured, error) {
+	return ParseMappedFileContents(m.mappedFiles)
+}
 
 func (c *Controller) findManifestByRef(ref v1alpha1.ManifestRef) (*v1alpha1.AddonManifest, error) {
 	targetRange, err := semver.ParseRange(ref.Version)
@@ -40,13 +112,33 @@ func (c *Controller) findManifestByRef(ref v1alpha1.ManifestRef) (*v1alpha1.Addo
 	return common.FindManifestForRange(addonManifests, ref.Name, targetRange)
 }
 
-func (c *Controller) resolveManifest(manifest *v1alpha1.AddonManifest) (*chart.Chart, error) {
+func (c *Controller) configMapFor(manifest *v1alpha1.AddonManifest) (*v1.ConfigMap, error) {
+	return c.kubeclientset.
+		CoreV1().
+		ConfigMaps(manifest.Namespace).
+		Get(manifest.Spec.ConfigMap, metav1.GetOptions{})
+}
+
+func (c *Controller) resolveManifest(manifest *v1alpha1.AddonManifest) (Source, error) {
 	source := manifest.Spec
-	if source.ConfigMap == "" {
-		return nil, fmt.Errorf("no source for manifest %s/%s", manifest.Namespace, manifest.Name)
+
+	if source.ConfigMap != "" {
+		return c.resolveConfigMap(manifest)
+	}
+	if source.ConfigMapHelm != "" {
+		return c.resolveConfigMapHelm(manifest)
 	}
 
-	return c.resolveManifestConfigMap(manifest)
+	return nil, fmt.Errorf("no source for manifest %s/%s", manifest.Namespace, manifest.Name)
+}
+
+func (c *Controller) resolveConfigMap(manifest *v1alpha1.AddonManifest) (Source, error) {
+	configMap, err := c.configMapFor(manifest)
+	if err != nil {
+		return nil, err
+	}
+
+	return &mappedFileSource{configMap.Data}, nil
 }
 
 func chartMetadata(manifest *v1alpha1.AddonManifest) (*chart.Metadata, error) {
@@ -67,11 +159,8 @@ func chartConfig(manifest *v1alpha1.AddonManifest) (*chart.Config, error) {
 	return &chart.Config{Raw: string(data)}, nil
 }
 
-func (c *Controller) resolveManifestConfigMap(manifest *v1alpha1.AddonManifest) (*chart.Chart, error) {
-	configMap, err := c.kubeclientset.
-		CoreV1().
-		ConfigMaps(manifest.Namespace).
-		Get(manifest.Spec.ConfigMap, metav1.GetOptions{})
+func (c *Controller) resolveConfigMapHelm(manifest *v1alpha1.AddonManifest) (Source, error) {
+	configMap, err := c.configMapFor(manifest)
 	if err != nil {
 		return nil, err
 	}
@@ -96,10 +185,12 @@ func (c *Controller) resolveManifestConfigMap(manifest *v1alpha1.AddonManifest) 
 		}
 	}
 
-	return &chart.Chart{
+	chrt := &chart.Chart{
 		Metadata:  metadata,
 		Values:    config,
 		Templates: templates,
 		Files:     files,
-	}, nil
+	}
+
+	return &chartSource{chrt}, nil
 }
