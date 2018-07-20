@@ -27,6 +27,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
+const (
+	shootKind = "Shoot"
+)
+
 var (
 	anyVersion = semver.Range(func(_ semver.Version) bool { return true })
 )
@@ -70,6 +74,7 @@ func (c *Controller) ensureAddons(shoot *gardenv1beta1.Shoot, manifests []*v1alp
 
 	for _, manifest := range manifests {
 		manifestName, manifestVersion := manifest.NameAndVersion()
+		blockOwnerDeletion := true
 		instance := &v1alpha1.AddonInstance{
 			TypeMeta: metav1.TypeMeta{
 				APIVersion: v1alpha1.SchemeGroupVersion.String(),
@@ -79,7 +84,13 @@ func (c *Controller) ensureAddons(shoot *gardenv1beta1.Shoot, manifests []*v1alp
 				Namespace: shoot.Namespace,
 				Name:      getAddonInstanceName(shoot, manifest),
 				OwnerReferences: []metav1.OwnerReference{
-					*metav1.NewControllerRef(shoot, gardenv1beta1.SchemeGroupVersion.WithKind("Shoot")),
+					{
+						APIVersion:         gardenv1beta1.SchemeGroupVersion.WithKind(shootKind).String(),
+						Kind:               shootKind,
+						Name:               shoot.Name,
+						UID:                shoot.UID,
+						BlockOwnerDeletion: &blockOwnerDeletion,
+					},
 				},
 				Finalizers: []string{v1alpha1.BouquetName},
 			},
