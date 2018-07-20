@@ -109,6 +109,7 @@ func (c *Controller) reconcile(shoot *gardenv1beta1.Shoot) error {
 		return nil
 	}
 
+	// TODO: diff & remove previous addon instances if not needed anymore
 	manifests, err := c.extractAddonManifests(shoot)
 	if err != nil {
 		c.log.Errorf("Could not resolve addon manifests for shoot %s/%s: %v",

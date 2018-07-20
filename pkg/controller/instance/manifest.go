@@ -19,9 +19,11 @@ import (
 	"github.com/blang/semver"
 	"github.com/gardener/bouquet/pkg/apis/garden/v1alpha1"
 	"github.com/gardener/bouquet/pkg/controller/common"
+	"github.com/golang/protobuf/ptypes/any"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/helm/pkg/proto/hapi/chart"
+	"strings"
 )
 
 func (c *Controller) findManifestByRef(ref v1alpha1.ManifestRef) (*v1alpha1.AddonManifest, error) {
@@ -84,14 +86,20 @@ func (c *Controller) resolveManifestConfigMap(manifest *v1alpha1.AddonManifest) 
 		return nil, err
 	}
 
-	templates := make([]*chart.Template, 0, len(configMap.Data))
+	var templates []*chart.Template
+	var files []*any.Any
 	for name, data := range configMap.Data {
-		templates = append(templates, &chart.Template{Name: name, Data: []byte(data)})
+		if strings.HasSuffix(name, ".tmpl") {
+			templates = append(templates, &chart.Template{Name: name, Data: []byte(data)})
+		} else {
+			files = append(files, &any.Any{TypeUrl: name, Value: []byte(data)})
+		}
 	}
 
 	return &chart.Chart{
 		Metadata:  metadata,
 		Values:    config,
 		Templates: templates,
+		Files:     files,
 	}, nil
 }
