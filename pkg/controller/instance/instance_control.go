@@ -97,11 +97,13 @@ func dynamicResourceInterfaceFor(
 	return dynamicInterface.Resource(mapping.Resource).Namespace(namespace), nil
 }
 
-func (c *Controller) ensureAddonInstance(instance *v1alpha1.AddonInstance, objects []*unstructured.Unstructured) error {
+func (c *Controller) ensureAddonInstanceObjects(instance *v1alpha1.AddonInstance, objects []*unstructured.Unstructured) error {
 	dynamicInterface, restMapper, err := c.targetFromInstance(instance)
 	if err != nil {
 		return err
 	}
+
+	SortObjects(objects, InstallOrder)
 
 	var result error
 	for _, object := range objects {
@@ -121,12 +123,14 @@ func (c *Controller) ensureAddonInstance(instance *v1alpha1.AddonInstance, objec
 	return result
 }
 
-func (c *Controller) deleteAddonInstance(instance *v1alpha1.AddonInstance, objects []*unstructured.Unstructured) error {
+func (c *Controller) deleteAddonInstanceObjects(instance *v1alpha1.AddonInstance, objects []*unstructured.Unstructured) error {
 	// TODO: check case where shoot has already been disassociated from seed but objects were created
 	dynamicInterface, restMapper, err := c.targetFromInstance(instance)
 	if err != nil {
 		return err
 	}
+
+	SortObjects(objects, UninstallOrder)
 
 	var result error
 	for _, object := range objects {
@@ -143,6 +147,18 @@ func (c *Controller) deleteAddonInstance(instance *v1alpha1.AddonInstance, objec
 	}
 
 	return result
+}
+
+func (c *Controller) removeInstanceFinalizer(instance *v1alpha1.AddonInstance) error {
+	instanceFinalizers := sets.NewString(instance.Finalizers...)
+	instanceFinalizers.Delete(v1alpha1.BouquetName)
+	instance.Finalizers = instanceFinalizers.UnsortedList()
+
+	_, err := c.bouquetclientset.GardenV1alpha1().AddonInstances(instance.Namespace).Update(instance)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+	return nil
 }
 
 func (c *Controller) reconcile(instance *v1alpha1.AddonInstance) error {
@@ -172,15 +188,12 @@ func (c *Controller) reconcile(instance *v1alpha1.AddonInstance) error {
 
 		// TODO: Cleanup should not happen on an instance -> Move logic
 		// to sth like addon instance object.
-		if err := c.deleteAddonInstance(instance, objects); err != nil {
+		if err := c.deleteAddonInstanceObjects(instance, objects); err != nil {
 			c.log.Errorf("Could not delete addon instance: %v", err)
 			return err
 		}
 
-		instanceFinalizers := sets.NewString(instance.Finalizers...)
-		instanceFinalizers.Delete(v1alpha1.BouquetName)
-		instance.Finalizers = instanceFinalizers.UnsortedList()
-		if _, err := c.bouquetclientset.GardenV1alpha1().AddonInstances(instance.Namespace).Update(instance); err != nil && !apierrors.IsNotFound(err) {
+		if err := c.removeInstanceFinalizer(instance); err != nil {
 			c.log.Errorf("Could not remove finalizer from addon instance %s/%s: %v",
 				instance.Namespace, instance.Name, err)
 			return err
@@ -190,7 +203,7 @@ func (c *Controller) reconcile(instance *v1alpha1.AddonInstance) error {
 		return nil
 	}
 
-	if err := c.ensureAddonInstance(instance, objects); err != nil {
+	if err := c.ensureAddonInstanceObjects(instance, objects); err != nil {
 		c.log.Errorf("Could not ensure addons: %v", err)
 		return err
 	}

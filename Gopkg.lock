@@ -77,6 +77,8 @@
     "pkg/client/garden/clientset/versioned",
     "pkg/client/garden/clientset/versioned/scheme",
     "pkg/client/garden/clientset/versioned/typed/garden/v1beta1",
+    "pkg/client/garden/informers/externalversions",
+    "pkg/client/garden/informers/externalversions/garden",
     "pkg/client/garden/informers/externalversions/garden/v1beta1",
     "pkg/client/garden/informers/externalversions/internalinterfaces",
     "pkg/client/garden/listers/garden/v1beta1",
@@ -623,6 +625,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "cfadd9df947442fca78dc7361793deffcd47a3a1a89ab19759ecd984da63154d"
+  inputs-digest = "f17b871d0268b7e7c6a9bc3e4688cb473b325829de379a06848fc9cb68e9e746"
   solver-name = "gps-cdcl"
   solver-version = 1
